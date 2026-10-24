@@ -39,6 +39,10 @@ class RenderingTests(unittest.TestCase):
             "k3.1-pro": "kimi-k3.md",
             "kimi-k3.1-pro-highspeed": "kimi-k3.md",
             "k3.1-pro-highspeed": "kimi-k3.md",
+            "claude-fable-5-1": "claude-fable-5-1.md",
+            "claude-opus-5-5": "claude-opus-5-5.md",
+            "claude-sonnet-5-5": "claude-sonnet-5-5.md",
+            "claude-haiku-5-5": "claude-haiku-5-5.md",
         }
         core = (SKILL_ROOT / "references/core.md").read_text()
         for model, filename in cases.items():

@@ -21,6 +21,10 @@ PROFILES = {
     "k3.1-pro": "references/kimi-k3.md",
     "kimi-k3.1-pro-highspeed": "references/kimi-k3.md",
     "k3.1-pro-highspeed": "references/kimi-k3.md",
+    "claude-fable-5-1": "references/claude-fable-5-1.md",
+    "claude-opus-5-5": "references/claude-opus-5-5.md",
+    "claude-sonnet-5-5": "references/claude-sonnet-5-5.md",
+    "claude-haiku-5-5": "references/claude-haiku-5-5.md",
 }
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 
