@@ -17,3 +17,12 @@ Add `-g` for a global installation. Codex is supported; [Claude Code support is 
 ## Use
 
 Ask your agent to use `arch-simplicity-guard` to review a plan or architecture decision. Provide the requirements and relevant context.
+
+```text
+Use $arch-simplicity-guard to review the plan below against its requirements.
+Identify unnecessary mechanisms and suggest simpler alternatives that preserve
+the requirements. Explain any blocking findings. Do not edit files.
+
+Requirements: [paste requirements]
+Plan: [paste plan or provide its path]
+```
