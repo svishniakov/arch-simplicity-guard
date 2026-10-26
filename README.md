@@ -2,7 +2,7 @@
 
 Reviews architecture and implementation plans for unnecessary abstractions, infrastructure, credentials, and acceptance checks. Suggests simpler solutions that preserve current requirements and component responsibilities.
 
-Works independently or within Agent Flow. Selects model-specific instructions automatically. Instructions are written in Russian.
+Runs a reviewer subagent independently or works within Agent Flow. Prefers the parent model and reasoning settings, with a fallback to the harness defaults. Selects instructions for the executing model, using its OpenAI, Claude, or Kimi family profile when no exact profile exists. Instructions are written in Russian.
 
 ## Install
 
@@ -12,7 +12,7 @@ Requires Node.js, Git, and Python 3.10+.
 npx skills add svishniakov/arch-simplicity-guard
 ```
 
-Add `-g` for a global installation. Codex is supported; [Claude Code support is experimental and requires a hook](references/claude-code.md).
+Add `-g` for a global installation. Setup: [Codex](references/codex.md), [Kimi Code](references/kimi-code.md). [Claude Code requires a hook and remains experimental](references/claude-code.md); it has not been tested in a live Claude Code session.
 
 ## Use
 

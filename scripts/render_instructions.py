@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
 from uuid import UUID
+
+from kimi_context import current_context as kimi_current_context
 
 
 PROFILES = {
@@ -26,6 +29,11 @@ PROFILES = {
     "claude-sonnet-5-5": "references/claude-sonnet-5-5.md",
     "claude-haiku-5-5": "references/claude-haiku-5-5.md",
 }
+FAMILY_PROFILES = (
+    (r"(?:gpt-(?:\d|oss-)[a-z0-9.-]*|o\d+(?:-[a-z0-9.]+)*)", "references/openai.md"),
+    (r"claude-[a-z0-9]+(?:[.-][a-z0-9]+)*", "references/claude.md"),
+    (r"(?:kimi-(?:k\d|for-coding)|k\d)[a-z0-9.-]*", "references/kimi.md"),
+)
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -89,9 +97,18 @@ def current_context(codex_home: Path, thread_id: str) -> dict:
     return {"model": model, "reasoning_effort": effort if isinstance(effort, str) and effort else None}
 
 
-def render_instructions(model: str, reasoning_effort: str | None = None, skill_root: Path = SKILL_ROOT) -> dict:
+def select_profile(model: str) -> str | None:
     model = valid_model(model)
-    profile = PROFILES.get(model)
+    if model in PROFILES:
+        return PROFILES[model]
+    for pattern, profile in FAMILY_PROFILES:
+        if re.fullmatch(pattern, model, re.IGNORECASE):
+            return profile
+    return None
+
+
+def render_instructions(model: str, reasoning_effort: str | None = None, skill_root: Path = SKILL_ROOT) -> dict:
+    profile = select_profile(model)
     instructions = (skill_root / "references/core.md").read_text(encoding="utf-8")
     if profile is not None:
         instructions = instructions.rstrip() + "\n\n" + (skill_root / profile).read_text(encoding="utf-8")
@@ -99,13 +116,24 @@ def render_instructions(model: str, reasoning_effort: str | None = None, skill_r
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Render simplicity instructions for this Codex agent's active model.")
-    parser.parse_args()
-    codex_home = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")).expanduser()
+    parser = argparse.ArgumentParser(description="Render simplicity instructions for the executing agent's active model.")
+    parser.add_argument("--harness", choices=("codex", "kimi-code"), default="codex")
+    parser.add_argument("--session-id")
+    parser.add_argument("--agent-id")
+    args = parser.parse_args()
+    if args.harness == "codex" and (args.session_id is not None or args.agent_id is not None):
+        parser.error("Codex uses its own CODEX_THREAD_ID; session and agent IDs are only for kimi-code")
+    if args.harness == "kimi-code" and (not args.session_id or not args.agent_id):
+        parser.error("kimi-code requires native --session-id and --agent-id")
     try:
-        context = current_context(codex_home, os.environ.get("CODEX_THREAD_ID", ""))
+        if args.harness == "kimi-code":
+            kimi_home = Path(os.environ.get("KIMI_CODE_HOME") or str(Path.home() / ".kimi-code")).expanduser()
+            context = kimi_current_context(kimi_home, args.session_id, args.agent_id)
+        else:
+            codex_home = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")).expanduser()
+            context = current_context(codex_home, os.environ.get("CODEX_THREAD_ID", ""))
         result = render_instructions(**context)
-    except (ContextError, OSError, UnicodeError, sqlite3.Error, json.JSONDecodeError) as exc:
+    except (ValueError, OSError, sqlite3.Error) as exc:
         print(f"arch-simplicity-guard: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False))

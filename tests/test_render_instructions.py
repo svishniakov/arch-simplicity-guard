@@ -59,6 +59,24 @@ class RenderingTests(unittest.TestCase):
         self.assertIsNone(result["profile"])
         self.assertEqual(result["instructions"], (SKILL_ROOT / "references/core.md").read_text())
 
+    def test_family_profiles_preserve_actual_model_and_optional_effort(self):
+        cases = {
+            "gpt-5.6-sol": "openai", "gpt-7": "openai", "gpt-oss-120b": "openai", "o3-pro": "openai",
+            "claude-opus-6": "claude", "claude-sonnet-4-20250514": "claude",
+            "Kimi-K2.5": "kimi", "k4": "kimi", "kimi-for-coding": "kimi",
+        }
+        for model, family in cases.items():
+            with self.subTest(model=model):
+                result = render_instructions(model)
+                self.assertEqual(result["model"], model)
+                self.assertEqual(result["profile"], f"references/{family}.md")
+                self.assertIsNone(result["reasoning_effort"])
+
+    def test_unrecognized_names_do_not_infer_family_from_provider_or_substring(self):
+        for model in ("my-gpt-7", "future-claude", "opus", "openai-compatible", "gemini-3-pro"):
+            with self.subTest(model=model):
+                self.assertIsNone(render_instructions(model)["profile"])
+
     def test_invalid_model_does_not_fall_back(self):
         for model in (None, "", " ", " gpt-6-astra", 42):
             with self.subTest(model=model), self.assertRaises(ContextError):
@@ -71,6 +89,8 @@ class RenderingTests(unittest.TestCase):
             (root / "references/core.md").write_text("Core")
             with self.assertRaises(FileNotFoundError):
                 render_instructions("gpt-6-astra", skill_root=root)
+            with self.assertRaises(FileNotFoundError):
+                render_instructions("gpt-7", skill_root=root)
             self.assertEqual(render_instructions("future-model", skill_root=root)["instructions"], "Core")
 
     def test_missing_core_is_an_error(self):
@@ -121,6 +141,14 @@ class RuntimeTests(unittest.TestCase):
         events += [event("turn_context", turn_id="second", model="gpt-6.1-sol", effort="high")]
         self.write(events)
         self.assertEqual(self.read(), {"model": "gpt-6.1-sol", "reasoning_effort": "high"})
+
+    def test_native_default_child_uses_own_family_not_parent_profile(self):
+        self.write([event("session_meta", id=PARENT), *turn("parent", "gpt-6-astra", "max"),
+                    event("session_meta", id=THREAD), *turn("child", "gpt-5.6-sol", None)])
+        result = json.loads(self.cli().stdout)
+        self.assertEqual(result["model"], "gpt-5.6-sol")
+        self.assertEqual(result["profile"], "references/openai.md")
+        self.assertIsNone(result["reasoning_effort"])
 
     def test_full_history_fork_keeps_own_metadata_before_parent_history(self):
         inherited = [event("session_meta", id=THREAD), event("session_meta", id=PARENT),

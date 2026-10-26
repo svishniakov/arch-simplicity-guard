@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from claude_hook import MARKER_COMMAND, claude_context
+from claude_hook import MARKER_COMMAND, PendingTranscript, claude_context, wait_for_claude_context
 from render_instructions import ContextError, SKILL_ROOT, render_instructions
 
 
@@ -144,6 +144,32 @@ class ClaudeHookTests(unittest.TestCase):
                 patch("claude_hook.render_instructions", side_effect=FileNotFoundError("missing profile")):
             self.assertEqual(main(), 0)
         self.assertIn("missing profile", json.loads(output.getvalue())["reason"])
+
+    def test_delayed_current_record_is_retried_and_delivered(self):
+        self.write(self.record(tool="old"))
+        with patch("claude_hook.time.sleep", side_effect=lambda _: self.write(self.record())) as sleep:
+            self.assertEqual(wait_for_claude_context(self.payload)["model"], "claude-sonnet-5-5")
+        sleep.assert_called_once()
+
+    def test_delayed_transcript_file_is_retried(self):
+        self.path.unlink()
+        with patch("claude_hook.time.sleep", side_effect=lambda _: self.write(self.record())) as sleep:
+            self.assertEqual(wait_for_claude_context(self.payload)["reasoning_effort"], "high")
+        sleep.assert_called_once()
+
+    def test_retry_deadline_does_not_return_stale_model(self):
+        self.write(self.record(tool="old"))
+        with patch("claude_hook.time.monotonic", side_effect=[10.0, 11.95, 12.0]), \
+                patch("claude_hook.time.sleep") as sleep, self.assertRaises(PendingTranscript):
+            wait_for_claude_context(self.payload)
+        self.assertEqual(sleep.call_count, 1)
+        self.assertLessEqual(sleep.call_args.args[0], 0.05)
+
+    def test_invalid_context_does_not_wait(self):
+        self.write(self.record(model=None))
+        with patch("claude_hook.time.sleep") as sleep, self.assertRaises(ContextError):
+            wait_for_claude_context(self.payload)
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":

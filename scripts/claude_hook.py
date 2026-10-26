@@ -5,12 +5,17 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 from render_instructions import ContextError, render_instructions, valid_model
 
 
 MARKER_COMMAND = "printf '%s\\n' 'arch-simplicity-guard:load'"
+
+
+class PendingTranscript(ContextError):
+    pass
 
 
 def is_guard_call(payload: dict) -> bool:
@@ -66,12 +71,26 @@ def claude_context(payload: dict) -> dict:
                         or original_input.get("command") != MARKER_COMMAND):
                     raise ContextError("Claude tool call does not match the hook input")
                 models.add(valid_model(message.get("model")))
+    if not models:
+        raise PendingTranscript("Current tool call is missing from the subagent transcript; "
+                                "the transcript may be delayed, disabled, or incompatible")
     if len(models) != 1:
-        raise ContextError("No unique model for this tool call in the subagent transcript; "
-                           "the transcript may be delayed, disabled, or incompatible")
+        raise ContextError("Conflicting models for this tool call in the subagent transcript")
     effort = payload.get("effort")
     level = effort.get("level") if isinstance(effort, dict) else None
     return {"model": models.pop(), "reasoning_effort": level if isinstance(level, str) and level else None}
+
+
+def wait_for_claude_context(payload: dict) -> dict:
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            return claude_context(payload)
+        except (PendingTranscript, FileNotFoundError):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.05, remaining))
 
 
 def main() -> int:
@@ -82,7 +101,7 @@ def main() -> int:
             raise ContextError("Expected a Claude Code hook JSON object")
         if not is_guard_call(payload):
             return 0
-        result = render_instructions(**claude_context(payload))
+        result = render_instructions(**wait_for_claude_context(payload))
     except (ContextError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         reason = f"arch-simplicity-guard: review unperformed: {exc}"
         print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
